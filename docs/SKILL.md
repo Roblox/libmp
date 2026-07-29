@@ -90,10 +90,10 @@ Sessions, Iterators and Arrays must be disposed of manually by calling the `Disp
 
 If you frequently query arrays and LibMP.GetMemUsed() reports an increasing amount of memory, it is almost certainly a leak.
 
-The names of Scopes/Timers are typically self-explanatory, but Roblox provides a reference on their website. *Note: these names are sometimes referred to as Tags or even Labels, although the latter is not technically correct (In the Engine internals, a Label refers to an auxiliary string attached to a scope instance, not to its name).*
+The names of Scopes/Timers are typically self-explanatory, but a **Complete MicroProfiler Scope Reference** is available if you need detailed descriptions or performance notes (~300 KB text file).
 
-- *Human-friendly reference:* https://create.roblox.com/docs/performance-optimization/microprofiler/tag-table
-- *AI-readable source:* https://create.roblox.com/docs/performance-optimization/microprofiler/tag-table.md
+- *Human-friendly reference:* https://github.com/Roblox/libmp/blob/main/docs/ALL-SCOPES.md
+- *AI-readable source:* https://github.com/Roblox/libmp/releases/download/latest/ALL-SCOPES.md
 
 *(When writing scripts for deep capture analysis, monitor your script's execution time. If it takes excessively long, look for optimizations in your Luau script to speed up future runs).*
 
