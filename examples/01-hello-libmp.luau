@@ -1,50 +1,53 @@
---[[
-    01-hello-libmp.luau -- Hello, LibMP!
-
-    The simplest example that works in both the Roblox Engine and Lute (CLI):
-    Open a session and read a counter value.
-
-    Setup in Roblox Studio:
-    - Add the LibMP ModuleScript to ReplicatedStorage
-    - Switch to Play mode
-
-    Setup in Lute (CLI Luau, https://lute.luau.org/):
-    - Ensure LibMP.luau is placed in the same directory as this script file
-    - Run in command line: `lute 1-hello-libmp.luau /path/to/dump.gprx`
+--[[ 
+01-hello-libmp.luau
+Cross-platform performance counter reader for Roblox & Lute CLI
 ]]
 
 local LibMP = require(game and "@game/ReplicatedStorage/LibMP" or "./LibMP")
 
--- In Lute, Control methods are no-ops
+-- Initialize profiling controls (No-ops in Lute CLI)
 LibMP.Control:EnableProfiler(true)
 LibMP.Control:EnableCapture(true)
 
-local session = LibMP.Session.OpenFromLiveData()
-if not session or not session:IsValid() then
-    print("Failed to open session")
-    if session then session:Dispose() end
-    return
-end
+local function runSession()
+    local session = LibMP.Session.OpenFromLiveData()
+    
+    if not session or not session:IsValid() then
+        print("[-] Failed to open session")
+        if session then session:Dispose() end
+        return
+    end
 
-local counterId = session:FindCounterId("**/Luau/heap")
-if counterId == 0 then
-    print("Luau heap counter is not found")
-    session:Dispose()
-    return
-end
+    -- Cleanup function to guarantee session disposal on exit/errors
+    local function cleanup()
+        if session and session:IsValid() then
+            session:Dispose()
+        end
+    end
 
-local function printHeapSize()
+    local counterId = session:FindCounterId("**/Luau/heap")
+    if counterId == 0 then
+        print("[-] Luau heap counter not found")
+        cleanup()
+        return
+    end
+
     local sample = session:FetchLastCounterSample(counterId)
     if sample then
-        print(string.format("Luau heap: %.2f MB", sample.Value / (1024 * 1024)))
+        local heapSizeMB = sample.Value / (1024 * 1024)
+        print(string.format("[+] Luau heap: %.2f MB", heapSizeMB))
     else
-        print("Luau heap counter has no samples")
+        print("[-] Luau heap counter has no samples yet")
     end
-    session:Dispose()
+
+    cleanup()
 end
 
+-- Execution Router
 if game then
-    task.delay(0, printHeapSize)
+    -- Wait exactly one engine frame to guarantee data sample capture availability
+    game:GetService("RunService").Heartbeat:Once(runSession)
 else
-    printHeapSize()
+    -- In Lute CLI, execute immediately (Ensure your CLI setup feeds a stream or change to file open)
+    runSession()
 end
