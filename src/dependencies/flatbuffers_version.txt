@@ -1,0 +1,12 @@
+{
+    "core_version": "25.12.19",
+    "npm_version": "25.9.23",
+    "python_version": "25.9.23",
+    "flatbuffers_url": "https://github.com/google/flatbuffers/archive/refs/tags/v{core_version}.zip",
+    "flatc_url": "https://github.com/google/flatbuffers/releases/download/v{core_version}/{os_name}.flatc.binary{suffix}.zip",
+    "flatc_asset_suffix": {
+        "Linux": ".clang++-18",
+        "Mac": "",
+        "Windows": ""
+    }
+}

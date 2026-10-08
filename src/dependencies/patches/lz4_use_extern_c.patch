@@ -1,0 +1,72 @@
+diff --git a/lz4.c b/lz4.c
+index 493a27e4..25a45591 100644
+--- a/lz4.c
++++ b/lz4.c
+@@ -767 +767 @@ int LZ4_sizeofState(void) { return sizeof(LZ4_stream_t); }
+-#if defined (__cplusplus)
++#if defined (__cplusplus) && defined (LZ4PATCH_USE_EXTERN_C)
+@@ -779 +779 @@ int LZ4_decompress_safe_partial_forceExtDict(const char* source, char* dest,
+-#if defined (__cplusplus)
++#if defined (__cplusplus) && defined (LZ4PATCH_USE_EXTERN_C)
+diff --git a/lz4.h b/lz4.h
+index 5b147b29..a2452971 100644
+--- a/lz4.h
++++ b/lz4.h
+@@ -35 +35 @@
+-#if defined (__cplusplus)
++#if defined (__cplusplus) && defined (LZ4PATCH_USE_EXTERN_C)
+@@ -884 +884 @@ LZ4LIB_API void LZ4_resetStream (LZ4_stream_t* streamPtr);
+-#if defined (__cplusplus)
++#if defined (__cplusplus) && defined (LZ4PATCH_USE_EXTERN_C)
+diff --git a/lz4file.h b/lz4file.h
+index 57c72880..203d5656 100644
+--- a/lz4file.h
++++ b/lz4file.h
+@@ -35 +35 @@
+-#if defined (__cplusplus)
++#if defined (__cplusplus) && defined (LZ4PATCH_USE_EXTERN_C)
+@@ -114 +114 @@ LZ4FLIB_STATIC_API LZ4F_errorCode_t LZ4F_writeClose(LZ4_writeFile_t* lz4fWrite);
+-#if defined (__cplusplus)
++#if defined (__cplusplus) && defined (LZ4PATCH_USE_EXTERN_C)
+diff --git a/lz4frame.h b/lz4frame.h
+index aee20428..bb1dae27 100644
+--- a/lz4frame.h
++++ b/lz4frame.h
+@@ -49 +49 @@
+-#if defined (__cplusplus)
++#if defined (__cplusplus) && defined (LZ4PATCH_USE_EXTERN_C)
+@@ -635 +635 @@ LZ4F_compressBegin_usingCDict(LZ4F_cctx* cctx,
+-#if defined (__cplusplus)
++#if defined (__cplusplus) && defined (LZ4PATCH_USE_EXTERN_C)
+@@ -656 +656 @@ LZ4F_compressBegin_usingCDict(LZ4F_cctx* cctx,
+-#if defined (__cplusplus)
++#if defined (__cplusplus) && defined (LZ4PATCH_USE_EXTERN_C)
+@@ -767 +767 @@ LZ4FLIB_STATIC_API size_t LZ4F_dctx_size(const LZ4F_dctx* dctx);
+-#if defined (__cplusplus)
++#if defined (__cplusplus) && defined (LZ4PATCH_USE_EXTERN_C)
+diff --git a/lz4hc.h b/lz4hc.h
+index 1f323f54..7354361f 100644
+--- a/lz4hc.h
++++ b/lz4hc.h
+@@ -37 +37 @@
+-#if defined (__cplusplus)
++#if defined (__cplusplus) && defined (LZ4PATCH_USE_EXTERN_C)
+@@ -332 +332 @@ LZ4LIB_API void LZ4_resetStreamHC (LZ4_streamHC_t* streamHCPtr, int compressionL
+-#if defined (__cplusplus)
++#if defined (__cplusplus) && defined (LZ4PATCH_USE_EXTERN_C)
+@@ -354 +354 @@ LZ4LIB_API void LZ4_resetStreamHC (LZ4_streamHC_t* streamHCPtr, int compressionL
+-#if defined (__cplusplus)
++#if defined (__cplusplus) && defined (LZ4PATCH_USE_EXTERN_C)
+@@ -416 +416 @@ LZ4LIB_STATIC_API int LZ4_compress_HC_extStateHC_fastReset (
+-#if defined (__cplusplus)
++#if defined (__cplusplus) && defined (LZ4PATCH_USE_EXTERN_C)
+diff --git a/xxhash.h b/xxhash.h
+index d6bad943..ec8def7d 100644
+--- a/xxhash.h
++++ b/xxhash.h
+@@ -70 +70 @@ XXH32        6.8 GB/s            6.0 GB/s
+-#if defined (__cplusplus)
++#if defined (__cplusplus) && defined (LZ4PATCH_USE_EXTERN_C)
+@@ -324 +324 @@ struct XXH64_state_s {
+-#if defined (__cplusplus)
++#if defined (__cplusplus) && defined (LZ4PATCH_USE_EXTERN_C)

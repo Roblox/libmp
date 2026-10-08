@@ -1,0 +1,17 @@
+{
+    "spider": {
+        "repo": "https://github.com/SovereignSatellite/Spider.git",
+        "commit": "8c23a8051776",
+        "branch": "stable"
+    },
+    "esbuild": {
+        "version": "0.25.10"
+    },
+    "wasmtime": {
+        "python_version": "36.0.0",
+        "python_requirement": ">=20.0.0,<50.0.0",
+        "python_fast_min_major": 20,
+        "python_fast_max_major_exclusive": 50,
+        "go_version": "v39.0.1"
+    }
+}

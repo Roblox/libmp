@@ -1,0 +1,13 @@
+# Vendored Google FlatBuffers C# runtime. It is not annotated for nullable
+# reference types, so it emits nullable warnings when compiled into a project
+# with <Nullable>enable</Nullable> (e.g. mp_api/langs/csharp/LibMP.csproj).
+# These are upstream sources we don't hand-edit, so silence the nullable
+# warnings here rather than in our own code.
+[*.cs]
+dotnet_diagnostic.CS8600.severity = none  # converting null literal to non-nullable
+dotnet_diagnostic.CS8601.severity = none  # possible null reference assignment
+dotnet_diagnostic.CS8602.severity = none  # dereference of a possibly null reference
+dotnet_diagnostic.CS8603.severity = none  # possible null reference return
+dotnet_diagnostic.CS8604.severity = none  # possible null reference argument
+dotnet_diagnostic.CS8618.severity = none  # non-nullable field uninitialized
+dotnet_diagnostic.CS8625.severity = none  # cannot convert null literal to non-nullable

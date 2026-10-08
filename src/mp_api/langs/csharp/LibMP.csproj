@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Wasmtime" Version="44.0.0" />
+  </ItemGroup>
+
+  <!-- Include vendored FlatBuffers C# runtime source. The accompanying
+       dependencies/flatbuffers_csharp/.editorconfig (auto-discovered) silences
+       nullable warnings for these upstream files only. -->
+  <ItemGroup>
+    <Compile Include="..\..\..\dependencies\flatbuffers_csharp\*.cs" Link="FlatBuffers\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <!-- Direct source-tree builds compile the generated FlatBuffers C# files. -->
+  <ItemGroup>
+    <Compile Include="..\..\..\build\csharp\MpTypes\*.cs" Link="Types\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <!-- Direct source-tree builds embed the WASM core as a binary resource,
+       loaded by Resources/EmbeddedWasm.cs. -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\..\build\wasm\LibMpCore.wasm">
+      <LogicalName>LibMP.LibMpCore.wasm</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+
+</Project>

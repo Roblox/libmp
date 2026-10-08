@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <Optimize>true</Optimize>
+    <LibMPArtifact Condition="'$(LibMPArtifact)' == ''">../../build/csharp/LibMP.cs</LibMPArtifact>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="ParitySummary.cs" />
+    <Compile Include="$(LibMPArtifact)" Link="LibMP.cs" />
+    <PackageReference Include="Wasmtime" Version="44.0.0" />
+  </ItemGroup>
+</Project>

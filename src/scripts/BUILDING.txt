@@ -1,0 +1,128 @@
+LIBMP BUILDING GUIDE
+====================
+
+Commands below run from `src/scripts`; from the repository root, prefix script
+paths with `src/scripts/`.
+
+REQUIREMENTS
+------------
+
+  All builds  Python 3.8+; scripts use only the Python standard library
+  Native      CMake and a C++17 compiler
+  Luau        Emscripten (`em++`), Rust/Cargo, and Git
+  JavaScript  Emscripten (`em++`), Node.js, and npm
+  C#          Emscripten (`em++`) and .NET 8 SDK
+  Python      Emscripten (`em++`) and Python 3.10+; Wasmtime is required to run
+  Go          Emscripten (`em++`), Go 1.18+, and wasmtime-go to run
+
+The pinned FlatBuffers types compiler (`flatc`) is downloaded automatically when
+needed. Luau builds also clone the pinned Spider WASM-to-Luau converter and build
+it with Cargo. JavaScript and Python builds install their pinned FlatBuffers
+build packages; JavaScript also installs esbuild. Go downloads the pinned
+FlatBuffers source used in its single-file bundle. Build tools are cached under
+`../build/utils` or the language's standard module cache.
+
+QUICK START
+-----------
+
+  python build.py --native  Build the native static library and C++ example
+  python build.py --luau    Build the bundled Luau module
+  python build.py --js      Build the single-file browser/Node JS library
+  python build.py --csharp  Build the single-source C# library
+  python build.py --python  Build the single-file Python module
+  python build.py --go      Build the single-file Go package
+
+Each target writes its output below `../build/<target>`; for example, `--js`
+produces `../build/js/LibMP.js`. Targets may be combined:
+
+  python build.py --native --luau --js --python --go
+
+Native builds use CMake and default to Release. Useful options are:
+
+  --clean        Remove selected build outputs first; cached tools are preserved
+  --config NAME  Native: Debug, Release, RelWithDebInfo, or MinSizeRel
+  --tests        Native: build and run the test suite
+
+Run `python build.py --help` for the complete current option list.
+
+CONFIGURATION
+-------------
+
+Luau builds first compile C++ to WASM with Emscripten. Make `em++` available on `PATH`, set `EMSDK_PATH` or `EMSDK`, or configure `emsdk_path` in the ignored `scripts/.user-config.json`:
+
+  {
+      "emsdk_path": "/path/to/emsdk"
+  }
+
+`scripts/user-config.json` defines the shared command-line feature options.
+Local `.user-config.json` values may extend or replace those defaults.
+
+SOURCE AMALGAMATION
+-------------------
+
+Generate the standalone `libmp.h` and `libmp.cpp` pair with:
+
+  python amalgamate.py
+
+The files are written to `../build/amalgamated` by default. Relevant options:
+
+  --output-dir DIR                   Select the output directory
+  --external-dependency flatbuffers  Omit bundled FlatBuffers; may be repeated
+  --external-dependency lz4          Omit bundled LZ4; may be repeated
+  --define NAME[=0|1]                Select a compile-time configuration;
+                                     may be repeated
+
+Run `python amalgamate.py --help` for the authoritative option descriptions.
+The generated pair records its generation timestamp, dependency modes, and
+configuration values in its header comment.
+
+TESTING AND AUTONOMY
+--------------------
+
+Tests:
+
+  python test_native.py                 Build and run all native tests
+  python test_native.py ntd_unit_tests  Run one test by its exact CTest name
+  python test_luau.py                   Build and smoke-test the Luau wrapper
+  python test_js.py                     Build and smoke-test the JS wrapper
+  python test_csharp.py                 Build and smoke-test the C# wrapper
+  python test_python.py                 Build and smoke-test the Python wrapper
+  python test_go.py                     Build and smoke-test the Go wrapper
+
+Allocator-autonomous verification:
+
+  python build_native.py --allocator-autonomous-strict
+
+The public C++ API uses `std::` types by default. `--allocator-autonomous`
+retains standard-library implementations while routing allocator-aware `ntd`
+types through the embedded allocator and selecting the `ntd` public API plus OS
+file I/O.
+
+Use `--external-malloc` to replace the embedded allocator with host-provided
+`NtdHostMalloc`, `NtdHostFree`, and `NtdHostRealloc` functions. Add
+`--external-setters` to install those callbacks at runtime.
+
+Strict symbol checks can use `llvm-nm` and `llvm-objdump` from the configured
+Emscripten SDK, falling back to suitable system tools. See
+`../ntd_stdlib/README.md` for the full allocator and autonomy model.
+
+EXTERNAL DEPENDENCIES
+---------------------
+
+Bundled FlatBuffers and LZ4 are used by default. A host build can select its own
+integrations with:
+
+  python build_native.py --external-flatbuffers --external-lz4
+
+External FlatBuffers must provide `<flatbuffers/flatbuffers.h>` and match
+`../dependencies/flatbuffers_version.txt`. External LZ4 must initialize
+`GPRX::lz4::Lz4Api` before use.
+
+DIRECT CMAKE USAGE
+------------------
+
+  cmake -S .. -B ../build/native -DCMAKE_BUILD_TYPE=Release
+  cmake --build ../build/native
+
+The default CMake build produces the static library and C++ example. Use
+`-DLIBMP_BUILD_TESTS=ON` to include the native test suite.

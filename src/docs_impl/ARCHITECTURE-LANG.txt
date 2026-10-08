@@ -1,0 +1,185 @@
+================================================================================
+LibMP Language Wrapper Architecture
+================================================================================
+
+This document describes the common architecture available to language wrappers.
+Wrappers share the C API and FlatBuffers schema, but may use native interop or a
+WebAssembly module and do not necessarily share a single build pipeline.
+
+================================================================================
+BUILD PIPELINE
+================================================================================
+
+Language targets select the steps they need. Native wrappers may call
+mp_api/c_api.h directly through their platform's C interop mechanism.
+
+1. Generate FlatBuffers types
+   - Input: mp_api/flatbuffer_types/mp_types.fbs
+   - Tool: flatc (auto-downloaded, version pinned in dependencies/flatbuffers_version.txt)
+   - Output: language-specific struct/table types
+   - C++ generation also emits a compact registry from the schema's @control_command
+     annotations; compiler-checked ControlChannel templates expand it into senders,
+     receiver slots, ids, type traits, and validated dispatch
+   - Generated schema types are building blocks, not a complete LibMP wrapper
+   - Post-processing may be applied (e.g. unification into single file)
+
+2. Build WASM module (for WASM-backed wrappers)
+   - Input: C++ source (mp_api/*.cpp, gprx_container/*.cpp)
+   - Tool: Emscripten C++ compiler (em++)
+   - Output: build/wasm/LibMpCore.wasm
+   - Exports: all C API functions, malloc, free, emscripten stack functions
+   - Imports: env callbacks (IO, logging, cache invalidation)
+
+3. Language-specific translation/packaging
+   - Luau: wasm-to-luau via Spider, minification
+   - JavaScript: TypeScript FlatBuffers output compiled and bundled with esbuild
+   - C#: generated C# types compiled against the Wasmtime host API
+   - Python: generated Python types and runtime bundled around the Wasmtime host API
+   - Go: generated Go types and runtime bundled around the wasmtime-go host API
+
+4. Bundle into a target-specific output when needed
+   - Combines: FlatBuffers runtime + generated types + API wrapper + WASM module
+   - Luau: build/luau/LibMP.luau
+   - JavaScript: build/js/LibMP.js (browser global and Node/CommonJS)
+   - C#: build/csharp/LibMP.cs (single source file; Wasmtime is the runtime dependency)
+   - Python: build/python/LibMP.py (single module; Wasmtime is the runtime dependency)
+   - Go: build/go/LibMP.go (single source file; wasmtime-go is the runtime dependency)
+
+================================================================================
+WASM MODULE INTERFACE
+================================================================================
+
+The C++ core exposes a C-style API (mp_api/c_api.h). A WASM build exports these
+functions directly. A WASM-backed wrapper calls them and interprets returned
+pointers as offsets into WASM linear memory.
+
+Imported callbacks (WASM -> host, provided by the wrapper):
+  - emscripten_notify_memory_growth(index) - memory was reallocated
+  - GprxExtDataOpen/Close/GetSize/Read(handle, ...) - external IO
+  - LibMpExtClearObjCacheCallback(handle, bucketIds, count) - cache invalidation
+  - LibMpExtSessionNotificationCallback(handle, flags) - session notifications
+  - LibMpExtConsoleLog(level, strPtr, len) - logging
+  - LibMpExtControlMsg(...) - engine control channel (CLI: no-op)
+  - LibMpExtToolOutput(dataPtr, size) - synchronous, chunked tool output
+
+Tool methods install their output handler only for the duration of a call. The
+callback's data points into WASM memory and is valid only during the callback;
+wrappers therefore copy it into a result buffer or write it directly to a file.
+Returning zero stops the operation and makes the exported tool call fail.
+
+================================================================================
+GLOBAL BUFFER (WASM MEMORY)
+================================================================================
+
+All FlatBuffer views read directly from WASM linear memory. The memory is
+shared across all view objects - there is no per-object copy.
+
+The wrapper maintains a single reference/pointer to the WASM memory region:
+  - Luau: W_mem variable (IS the WASM memory buffer, zero-copy)
+  - JavaScript: one FlatBuffers ByteBuffer whose Uint8Array is replaced on growth
+  - C#: one FlatBuffers ByteBuffer backed by an allocator whose pointer is replaced on growth
+  - Python: offset-based views rebind to the current memory before every field access
+  - Go: generated views refresh their shared memory slice before every field access
+
+Wrappers with a replaceable buffer reference update it when WASM reports memory
+growth through emscripten_notify_memory_growth. Python and Go instead rebind a
+view to the current Wasmtime memory immediately before field access.
+
+FlatBuffer objects store only their position (offset) within this memory.
+They read field values on demand from the shared buffer. This means:
+  - No memory copies when creating view objects
+  - All views automatically see current data
+
+================================================================================
+GET vs FETCH SEMANTICS
+================================================================================
+
+The API provides two access patterns for each data type:
+
+Get* methods:
+  - Return a lightweight view (FlatBuffer struct) pointing into WASM memory
+  - INVALIDATED by the next Get* or Fetch* call that goes through the cold path
+    (i.e., was not previously cached).
+
+Fetch* methods:
+  - Return a deep copy (all field values read eagerly into a plain object)
+  - Independent of WASM memory - safe to hold indefinitely
+
+The invalidation happens because the C API might reuse a static internal buffer
+for struct results, especially when caching is not in place. Each call to
+MpGetXxxFromArray or similar overwrites the previous result at the same
+memory location.
+
+================================================================================
+CACHING LAYER
+================================================================================
+
+The wrapper maintains a client-side cache that prevents redundant WASM calls and
+avoids recreating native-language structs for the same descriptors repeatedly.
+
+Cache structure (two tiers matching C API MpSession::CacheBucket):
+
+  ShortTerm (bucket 0) - cleared frequently; may change every frame:
+    - GlobalDesc
+    - GeneralInfo
+
+  LongTerm (bucket 1) - stable across multiple frames or minutes:
+    - GroupDesc (keyed by group ID)
+    - TimerDesc (keyed by timer ID)
+    - CounterDesc (keyed by counter ID)
+    - ThreadDesc (keyed by thread ID)
+
+Each cache entry stores both:
+  - Wraps: the Get* view result (FlatBuffer struct with position)
+  - Objs: the Fetch* deep copy result (unpacked object)
+
+Cache invalidation:
+  - The WASM module signals invalidation via LibMpExtClearObjCacheCallback
+  - This provides bucket IDs indicating which cache tier to clear
+  - The wrapper clears all entries in the specified bucket(s)
+  - Session notifications separately refresh or reset wrapper-owned label caches
+
+================================================================================
+WASM FUNCTION BINDING
+================================================================================
+
+All WASM function references are resolved once at module load time.
+Subsequent calls use direct references (no string lookups).
+
+  - Luau: W.FunctionName (table fields on the WASM module object)
+  - JavaScript: WebAssembly.Instance.exports fields
+  - C#: pre-resolved Wasmtime Function objects
+
+================================================================================
+SESSION LIFECYCLE AND IO
+================================================================================
+
+Sessions can be opened from:
+  - Memory buffer (OpenFromMem) - data copied into WASM heap
+  - File path (OpenFromFile) - external IO via callbacks
+  - Custom provider (OpenFromExternalProvider) - user-supplied IO interface
+
+WASM wrappers call the native Trusted variants inside the WebAssembly sandbox;
+native callers continue to default to verified, untrusted opens.
+
+External IO providers implement open/close/getSize/read. The WASM module
+calls back into the host via GprxExtData* imports. A registry maps session
+handles to their IO providers so callbacks can route to the correct one.
+Absolute offsets and total sizes cross this boundary as low/high uint32
+halves. Individual read sizes and block-relative offsets remain uint32.
+
+Sessions must be explicitly disposed to free WASM-side resources. Arrays and
+iterators also require disposal. If a language supports that, disposal should
+be called automatically, for example when an object is garbage-collected.
+
+================================================================================
+ADDING A NEW LANGUAGE TARGET
+================================================================================
+
+1. Choose native C interop or the WASM module, then implement the wrapper using
+   the applicable patterns above.
+
+2. Add a build script (scripts/build_<lang>.py) that generates any required
+   FlatBuffers types and packages the target's artifacts.
+
+3. Register in scripts/build.py PIPELINES dict.

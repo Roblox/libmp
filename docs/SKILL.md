@@ -11,7 +11,7 @@ LibMP is a Luau module used to profile the performance of Roblox games. Profilin
 
 All information visually available in the MicroProfiler (MP) UI is accessible programmatically via LibMP. In Studio, MicroProfiler data is accessible in both Play and Edit modes.
 
-**Limitations:** Currently, scope labels are not available (the text labels placed inside scope instances on the timeline by the Engine to describe processing details, not to be confused with scope/timer names/tags). Because of this, automatic script scopes are shown as "$Script" rather than "Script_MyScriptName". However, manually annotated scopes using `debug.profilebegin` / `debug.profileend` are displayed correctly. Also, only original/raw profiling data is provided, not derived data. There are no built-in average/min/max times; you must calculate these manually from the raw data if needed. Conversely, the previously unavailable history of counter values is now accessible.
+**Limitations:** Only original/raw profiling data is provided, not derived data. There are no built-in average/min/max times; you must calculate these manually from the raw data if needed. Conversely, the previously unavailable history of counter values is now accessible.
 
 ### Sessions & Capturing
 
@@ -19,7 +19,9 @@ The main object is a `Session`. It can be created from Live Data (the data that 
 
 A Session tracking Live Data is supposed to be created once (not every frame) and reused as needed. When the MP is actively capturing, the first data retrieval call to LibMP will synchronize the Session with the MP data state in the Engine. When the MP is paused, using LibMP in the current and subsequent frames will not trigger a data sync; you will simply work with the data that was already synced. (A rare exception occurs if the MP is paused for a long time and an OS thread is deleted; in this case, the Session will sync on the next LibMP call).
 
-A typical workflow when a frame time fluctuation is noticed is to wait briefly to collect a few more frames, then snapshot the MP data into a Luau buffer object. You can then create a new, independent Session from that buffer's data. This allows you to work with the exact same dataset indefinitely. This is especially useful when running LibMP in the Studio command bar or via MCP's execute_luau.
+A typical workflow when a frame time fluctuation is noticed is to wait briefly to collect a few more frames, then snapshot the MP data into one of the user-managed slots 1–4. In Studio, data in these slots persists when switching between Play and Edit modes until it is reset or overwritten. You can then open a Session from the slot and analyze that stable dataset. This is especially useful when running LibMP in the Studio command bar or via MCP's `execute_luau`.
+
+For longer recordings, start a memory stream targeting a slot, or in Studio start a file stream with an optional target slot. A target slot is selected when the stream starts and becomes readable after the stream is finalized. Such captures may run for minutes and typically contain multiple segments.
 
 Of course, "frame time fluctuations" is a broad term. It can refer to generally poor performance, individual frame spikes, or sustained periods of slightly elevated frame times due to GPU bottlenecks. You can analyze not only total frame time but also individual code Scope times, or the time spent by groups of scopes (e.g., Physics). This can be measured as the sum of CPU core times or as real-world elapsed time (which differ during parallel execution). Analyze rare spikes separately from steady-state bottlenecks. A single 600 ms stall can dominate averages and hide the normal bottleneck. These concepts are common in game profiling and are not specific to LibMP. 
 
@@ -49,7 +51,8 @@ The iterator progresses frame by frame, and thread by thread within each frame.
 
 **Important Iterator Behaviors:**
 * **GPU vs. CPU Timestamps:** When iterating over the GPU thread, be aware that timestamp origins and scales may differ from CPU timestamps - do not mix them. Additionally, a frame's overall GPU start and finish times may be too broad compared to the actual frame time, or may even contain inaccurate data, such as an end time earlier than the start time, or a frame without log entries where the next or previous frame spans multiple frames' duration and data. Still, continuous (almost gapless) sections of scopes within the GPU thread correctly represent GPU execution time, so the time spent within those sections should be used as your reference. Alternatively, frames with inaccurate GPU boundaries may be excluded from GPU-related analysis along with the surrounding frames. On some platforms, the GPU thread may be absent or empty.
-* **Event Entries:** Besides scope enter/leave entries, there are Event entries representing metadata for scope instances (like memory allocations or network events); however, these are not currently supported.
+* **Event Entries:** Besides scope enter/leave entries, there are Event entries representing metadata for scope instances (like memory allocations or network events). They are not currently decoded, but their raw entry data can still be read.
+* **Scope Labels:** Auxiliary strings attached to individual scope instances. Their text can be read directly or associated with the containing scope when scope-label tracking is enabled. Label text may be unavailable.
 * **Stitch Detection:** The log iterator detects stitches in frame capturing - based on absolute frame IDs - which occur if capturing is paused and resumed later.
 * **Warm-ups:** When processing paused/snapshotted data (where real-time performance overhead is less critical), you can start iterating one frame early (if this frames exist). This "warms up" the scope stack before analyzing your target frame range, so you don't need to run a procedure to recover the initial stack state.
 
@@ -110,9 +113,9 @@ LibMP download: https://github.com/Roblox/libmp/releases | Lute download: https:
 
 In Studio, do not force a switch to Play mode if MicroProfiler data has already been captured and is static.
 
-Use Studio MCP's `execute_luau` tool to run code snippets for interacting with MicroProfiler.
+Use Studio MCP's `execute_luau` tool to run code snippets for interacting with MicroProfiler. Return results through the `return` statement rather than printing them to the console. Print to the console only when explicitly requested, i.e., when the user wants to see the processed or intermediate results there specifically.
 
-When mentioning frame IDs to the user, provide both the regular ID and the absolute ID, so the frame can be located programmatically and in the UI.
+When mentioning frame IDs to the user, provide both the regular ID and the **absolute ID**, so the frame can be located programmatically and in the UI.
 
 Always set the frame limit before operating on frame data. A user may also use LibMP in their game and configure a very low frame limit. If you do not override it, that limit will be inherited by default. Note, however, that changing the frame limit from its previous value clears the history of counter values.
 
@@ -125,6 +128,8 @@ Always set the frame limit before operating on frame data. A user may also use L
 Do not use `OpenFromLiveData` in `execute_luau`, open the session from a snapshot.
 
 If a game is suspected to be GPU-bound because the GPU frame time is close to the CPU frame time, this does not automatically mean the workload is actually GPU-bound. The true active work time of the GPU can only be determined by examining the GPU thread scopes.
+
+If enough evidence of a performance issue is found during the earlier stages of analysis, do not unnecessarily go through all possible additional analyses unless explicitly requested by the user. For example, when a Physics-related scope is clearly the dominant CPU consumer, do not continue with a deep check of GPU scopes or memory counters.
 
 
 ---
@@ -200,12 +205,31 @@ print("LibMP.Versions.DataFormat = " .. LibMP.Versions.DataFormat)
 -- Is the API ready to use
 print("LibMP.Control:IsBackendReady() = " .. (LibMP.Control:IsBackendReady() and 1 or 0))
 
+-- LibMP.Control:SetMemTargetMB(20) -- A lower target reduces production-client memory use but retains less history.
+
 -- When saving snapshots for deeper analysis, setting the frame limit to 256 (max) can be useful.
 -- The actual number of frames captured may be lower, as it depends on how many frames fit into the MicroProfiler buffers.
 LibMP.Control:SetFrameLimit(128)
--- local snapshotBuf = LibMP.Control:CaptureToBufferSync()
+-- LibMP.Control:CaptureToSlotSync(1) -- User-managed slots 1-4 persist when Studio switches between Play and Edit modes.
+-- local session1 = LibMP.Session.OpenFromSlot(1)
+-- After disposing session1, call LibMP.Control:ResetSlot(1) to free the slot's resources
+-- when its data is no longer needed.
+-- local snapshotBuf = LibMP.Control:CaptureToBufferSync({
+--     ContainerFormat = LibMP.Enums.ContainerFormat.Compressed,
+-- })
+-- Compression is optional. Its significantly smaller output is useful when transferring
+-- the buffer over a network. A Session may use additional memory as compressed blocks are
+-- accessed, decompressed, and retained.
 -- print("snapshot buf len = " .. buffer.len(snapshotBuf))
--- local session = LibMP.Session.OpenFromBuffer(snapshotBuf)
+-- local session2 = LibMP.Session.OpenFromBuffer(snapshotBuf)
+-- For longer recordings, use LibMP.Experimental.V1.StartMemoryStream(targetSlotId), or
+-- StartFileStream(postfix, targetSlotId) in Studio. Use GetStreamStatus() to track the
+-- recording's current status. Call StopStream() to stop and finalize it, then open its
+-- slot on the next frame.
+-- While streaming, enable markers 1-5 around intervals of interest; later inspect
+-- SegmentDesc.Markers to locate the corresponding parts of the recording.
+-- Long captures typically contain multiple segments. A thread log iterator can preserve
+-- scope-stack continuity across contiguous segments when rewound to the directly following range.
 
 LibMP.Control:ShowUI(true) -- Show the MicroProfiler UI so we can visually inspect frame times (optional, Studio-only)
 LibMP.Control:EnableProfiler(true)
@@ -583,10 +607,60 @@ end)
 iterateCounters()
 renderMiniUi()
 
--- iter:Dispose() -- Disposing of the log iterator first, while the session still exists.
+-- iter:Dispose()
 -- session:Dispose()
 -- iter = nil
 -- session = nil
+```
+
+
+---
+
+## LibMP -- long-capture segments and labels
+
+```
+local LibMP = require("@game/ReplicatedStorage/LibMP")
+-- local LibMP = require("./LibMP") -- For command-line Luau (Lute)
+
+local session = LibMP.Session.OpenFromSlot(1) -- A slot containing a saved stream
+-- local session = LibMP.Session.OpenFromFile("capture.x.html") -- or "capture.gprx"
+if not session or not session:IsValid() then
+    if session then session:Dispose() end
+    error("Failed to open capture")
+end
+
+local trackIndex = 0
+local segments = session:FetchSegments(trackIndex)
+local segmentCount = math.min(#segments, 10)
+if segmentCount > 0 and session:SelectTrack(trackIndex) then
+    local iter = session:CreateLogIterator()
+    iter:Configure({ TrackScopeLabels = true }) -- Retain labels until their containing scope exits
+    local state = iter:GetState()
+    local labeledScopeCount = 0
+
+    -- Reuse the iterator across directly following segments to preserve its scope stacks.
+    for segmentIndex = 0, segmentCount - 1 do
+        local segment = segments[segmentIndex + 1]
+        if session:SelectSegment(segmentIndex) then
+            iter:RewindTo(segment.FrameIdBegin, segment.FrameIdEnd)
+            while iter:Step() do
+                if state:IsExit() then
+                    local labelCount = iter:GetCurrentScopeLabelCount()
+                    if labelCount > 0 then
+                        labeledScopeCount += 1
+                        -- for labelIndex = 0, labelCount - 1 do
+                        --     print(iter:FetchCurrentScopeLabel(labelIndex))
+                        -- end
+                    end
+                end
+            end
+        end
+    end
+
+    print("Scopes containing labels:", labeledScopeCount)
+    iter:Dispose()
+end
+session:Dispose()
 ```
 
 
@@ -604,8 +678,12 @@ Syntax Note: All API methods are dynamic (called via `:`), with the exception of
 
 * **`LibMP.IsCliMode`** `(boolean)`: Returns `true` if the environment is a CLI.
 * **`LibMP.GetMemUsed()`** `-> number`: Returns the current memory usage of the underlying WASM instance.
+* **`LibMP.GetMemReserved()`** `-> number`: Returns the memory currently reserved by the underlying WASM allocator.
 * **`LibMP.Versions`**: Instance of the `Versions` class. Contains `Versions.Library` and `Versions.DataFormat` `(number)`.
-* **`LibMP.Control`**: A global `Control` instance. This maps exactly to **`LibMP.Control.Global`**.
+* **`LibMP.Enums`**: Public enum constants, including `ContainerFormat`, `ContentMode`, `AppType`, and `DataSlot`.
+* **`LibMP.Control`**: The global `Control` instance.
+* **`LibMP.Tools`**: Container conversion utilities.
+* **`LibMP.Experimental.V1`**: Controls for stream start/stop and stream markers. These APIs may change without compatibility guarantees.
 
 ---
 
@@ -618,9 +696,38 @@ Syntax Note: All API methods are dynamic (called via `:`), with the exception of
 * **`:EnableProfiler(enable: boolean)`** `-> boolean`: Toggles the profiler.
 * **`:EnableCapture(enable: boolean)`** `-> boolean`: Activates/pauses data capture.
 * **`:SetFrameLimit(num: number)`** `-> boolean`: Sets the rolling frame limit.
+* **`:SetMemTargetMB(targetMB: number)`** `-> boolean`: Requests the engine MicroProfiler memory target in megabytes.
 * **`:ShowUI(show: boolean)`** `-> boolean`: Toggles the on-screen UI (Studio-only feature).
-* **`:CaptureToBufferSync()`** `-> buffer`: Captures the accumulated live data (collected frames) into a newly created buffer and returns it.
+* **`:CaptureToBufferSync(captureParams?)`** `-> buffer`: Captures the accumulated live data into a newly created buffer. Optional fields are `MaxFrameCount` and `ContainerFormat`.
+* **`:CaptureToSlotSync(targetSlotId: number, captureParams?)`** `-> boolean`: Captures the accumulated live data into a user-managed slot (1–4). In Studio, these slots persist when switching between Play and Edit modes.
+* **`:SaveSlotToBuffer(slotId: number)`** `-> buffer`: Copies a slot into a new Luau buffer.
+* **`:ResetSlot(slotId: number)`** `-> boolean`: Clears a stored slot.
 * **`:UseControlChannel(use: boolean)`** `-> boolean`: Enables or disables the control channel.
+
+`captureParams` accepts optional `MaxFrameCount` and `ContainerFormat` fields.
+`MaxFrameCount` is reserved for capture-window selection, which is not
+implemented by the game-engine backend; `0` selects the current live window.
+`ContainerFormat` defaults to
+`LibMP.Enums.ContainerFormat.Raw`.
+
+#### `Tools`
+* **`:ConvertToBuffer(session: Session, format: ContainerFormat)`** `-> buffer?`: Converts a session and returns the complete container.
+* **`:ConvertToFile(session: Session, format: ContainerFormat, outputName: string)`** `-> boolean`: Converts a session and streams the result to a file.
+* **`:SetHtmlAssetsBaseUrl(baseUrl: string)`** `-> boolean`: Overrides the base URL used by `.x.html` viewer-script references; an empty string restores the default.
+
+Use `LibMP.Enums.ContainerFormat.Raw` for raw headers and payloads,
+`Compressed` for raw headers with LZ4 payloads, `CompressedAscii` for hex
+headers and LZ4+Base64 payloads, or `CompressedHtml` for a `.x.html` file with
+viewer-script includes. `ConvertToFile` is available in command-line Luau
+(Lute).
+
+#### `Experimental.V1`
+* **`.StartFileStream(filenamePostfix?: string, targetSlotId?: number)`** `-> boolean`: Queues Studio file streaming startup for the next frame flip. The optional postfix accepts at most 16 ASCII letters or digits. When a writable target slot is supplied, the finalized file becomes that slot's backing store without copying it into memory.
+* **`.StartMemoryStream(targetSlotId: number)`** `-> boolean`: Queues a compressed streaming capture into a memory slot. The target slot becomes readable only after the stream is finalized.
+* **`.StopStream()`** `-> boolean`: Queues the current streaming capture to stop and finalize on the next frame flip.
+* **`.SetStreamMarker(marker: number, enabled: boolean)`** `-> boolean`: Enables or disables stream marker 1-5.
+* **`.GetStreamStatus()`** `-> ExperimentalStreamStatus`: Returns status only for a stream initiated through this API. An inactive status has all fields zero. The fields are `Active`, `StreamFrameId`, `AbsoluteFrameId`, `MarkerMask`, `RecordedSizeKb`, `MaxSizeKb`, and `ElapsedMs`; sizes are in KiB and a zero maximum means unlimited.
+* **`.SetContentMode(contentMode: ContentMode)`** `-> boolean`: Selects `Enums.ContentMode.Full` (default) or `CountersOnly`. Changing the mode resets the current live-data session. File and memory streams latch the current mode when their start request is accepted; one-shot captures ignore it.
 
 ---
 
@@ -634,7 +741,7 @@ Represents a MicroProfiler session - the main object you interact with. Contains
 ##### Constructors
 * **`Session.OpenFromMem(data: string | buffer)`** `-> Session?`: Opens a session from a string or buffer. Note that this method creates an internal copy of the provided string or buffer before working with it.
 * **`Session.OpenFromBuffer(b: buffer)`** `-> Session?`: Opens a session from a raw Luau buffer object.
-* **`Session.OpenFromSlot(id: number)`** `-> Session?`: Opens a session directly from a MicroProfiler data slot.
+* **`Session.OpenFromSlot(id: number, [cacheSize: number])`** `-> Session?`: Opens a session directly from a specific slot.
 * **`Session.OpenFromFile(path: string, [cacheSize: number])`** `-> Session?`: Opens a session from a file.
 * **`Session.OpenFromLiveData()`** `-> Session?`: Opens from data slot 0 in Roblox Engine, or from a file path provided via command-line arguments in CLI mode.
 * **`Session.OpenFromExternalProvider(io: table, [cacheSize: number])`** `-> Session?`: Advanced constructor requiring a custom IO handler.
@@ -644,7 +751,7 @@ Represents a MicroProfiler session - the main object you interact with. Contains
 * **`:IsValid()`** `-> boolean`: Checks if the session is valid.
 * **`:GetDataFormatVersion()`** `-> number`: Returns the session's data format version.
 * **`:GetObjSize()`** `-> number`: Returns the size of the last accessed object. If caching is enabled (default behavior), this will not reflect the size of objects that were cached and later accessed again.
-* **`:WithDataLock(callback: function)`** `-> (boolean, any)`: Safely locks the first accessed object data, executes the callback, and automatically unlocks (returning success status and callback result). This is only required in specific cases where you retrieve a data view via a `Get***` method and need to ensure it does not expire or get overwritten after subsequent `Get***` calls. **Mechanism:** The data view returned by the *first* `Get***` method executed within the lock helper will persist and remain valid until the callback finishes and the lock is released.
+* **`:WithDataLock(callback: function)`** `-> (boolean, any)`: Safely locks the first accessed object data, executes the callback, and automatically unlocks (returning success status and callback result). This is only required in specific cases where you retrieve a data view via a `Get***` method and need to ensure it does not expire or get overwritten after subsequent `Get***` calls. **Mechanism:** The data view returned by the *first* `Get***` method executed within the lock helper will persist and remain valid until the callback finishes and the lock is released. Locks may be nested after each outer lock has claimed its view and must be released in LIFO order, including when object caching is enabled.
 
 ##### Synchronization & Caching
 * **`:SyncWithDataSource()`** `-> boolean`: Synchronizes the session with its active data source. Live data sessions call this method automatically when you first access their data after it has been updated (e.g., a new game frame arrives).
@@ -653,7 +760,18 @@ Represents a MicroProfiler session - the main object you interact with. Contains
 * **`:SyncIfRequired()`** `-> nil`: Executes a sync if `SetSyncRequired()` was previously called.
 * **`:EnableObjectCache(enabled: boolean)`** `-> nil`: Toggles the Luau-side and C-side object caching for descriptors. Caching is enabled by default.
 * **`:ClearObjectCache()`** `-> nil`: Force-clears the cache.
-* **`:ClearLuauCacheBucket(bucketIdx: number)`** `-> nil`: Clears a specific bucket in the Luau cache (1 = ShortTerm, 2 = LongTerm).
+* **`:EnableLabelCache(enabled: boolean)`** `-> nil`: Enables or disables the label-string cache.
+* **`:ClearLabelCache()`** `-> nil`: Clears the label-string cache.
+
+##### Tracks & Segments
+* **`:GetTrackCount()`** `-> number`: Returns the number of independent recordings in the container.
+* **`:GetTracks()`** `-> StructArray<TrackDesc>`: Returns track descriptions; dispose the array when done.
+* **`:FetchTracks()`** `-> Array of TrackDesc`: Returns owned track descriptions.
+* **`:GetSegmentCount(trackIndex: number)`** `-> number`: Returns the number of segments in a track.
+* **`:GetSegments(trackIndex: number)`** `-> StructArray<SegmentDesc>`: Returns segment descriptions; dispose the array when done.
+* **`:FetchSegments(trackIndex: number)`** `-> Array of SegmentDesc`: Returns owned segment descriptions.
+* **`:SelectTrack(trackIndex: number)`** `-> boolean`: Selects a track and its first segment, if present.
+* **`:SelectSegment(segmentIndex: number)`** `-> boolean`: Selects a segment in the active track.
 
 ##### Core Getters / Fetchers
 * **Global & General**: 
@@ -697,18 +815,21 @@ Represents a MicroProfiler session - the main object you interact with. Contains
     * `:FetchUtcTimestampSamples()` `-> Array of Luau tables (U64Sample)`
 
 ##### Search & Filtering
-* **`:FindGroupId(nameMask: string, caseSensitive: boolean)`** `-> number`
-* **`:FindGroupIds(nameMask: string, caseSensitive: boolean)`** `-> Array of numbers`
-* **`:FindTimerId(nameMask: string, caseSensitive: boolean)`** `-> number`
-* **`:FindTimerIds(nameMask: string, caseSensitive: boolean)`** `-> Array of numbers`
+All `Find***` methods accept an optional `caseSensitive` argument that defaults
+to `false`.
+
+* **`:FindGroupId(nameMask: string, [caseSensitive: boolean])`** `-> number`
+* **`:FindGroupIds(nameMask: string, [caseSensitive: boolean])`** `-> Array of numbers`
+* **`:FindTimerId(nameMask: string, [caseSensitive: boolean])`** `-> number`
+* **`:FindTimerIds(nameMask: string, [caseSensitive: boolean])`** `-> Array of numbers`
 * **`:GetTimerIdsByGroupId(groupId: number)`** `-> ScalarArray<number>`
 * **`:FetchTimerIdsByGroupId(groupId: number)`** `-> Array of numbers`
-* **`:GetTimerIdsByGroupNames(nameMask: string, caseSensitive: boolean)`** `-> ScalarArray<number>`
-* **`:FetchTimerIdsByGroupNames(nameMask: string, caseSensitive: boolean)`** `-> Array of numbers`
-* **`:FindCounterId(nameMask: string, caseSensitive: boolean)`** `-> number`
-* **`:FindCounterIds(nameMask: string, caseSensitive: boolean)`** `-> Array of numbers`
-* **`:FindThreadId(nameMask: string, caseSensitive: boolean)`** `-> number`
-* **`:FindThreadIds(nameMask: string, caseSensitive: boolean)`** `-> Array of numbers`
+* **`:GetTimerIdsByGroupNames(nameMask: string, [caseSensitive: boolean])`** `-> ScalarArray<number>`
+* **`:FetchTimerIdsByGroupNames(nameMask: string, [caseSensitive: boolean])`** `-> Array of numbers`
+* **`:FindCounterId(nameMask: string, [caseSensitive: boolean])`** `-> number`
+* **`:FindCounterIds(nameMask: string, [caseSensitive: boolean])`** `-> Array of numbers`
+* **`:FindThreadId(nameMask: string, [caseSensitive: boolean])`** `-> number`
+* **`:FindThreadIds(nameMask: string, [caseSensitive: boolean])`** `-> Array of numbers`
 
 ##### Iterators
 * **`:CreateLogIterator()`** `-> LogIterator`
@@ -725,7 +846,17 @@ Represents a MicroProfiler session - the main object you interact with. Contains
 * **`:GetThreadStackState(threadId: number)`** `-> FB view (LogIteratorThreadStackState)`: Returns a wrapped stack state for a specific thread.
 * **`:GetThreadStackElement(threadId: number, stackLevel: number)`** `-> FB view (LogIteratorThreadStackElement)`: Returns a specific stack element for a thread. stackLevel is 0-based.
 * **`:GetCurrentThreadStackElement(stackLevel: number)`** `-> FB view (LogIteratorThreadStackElement)`: Returns a wrapped element from the current thread's stack. stackLevel is 0-based.
+* **`:GetCurrentEntryCount()`** `-> number`: Returns the number of physical 64-bit entries in the current logical step.
+* **`:GetCurrentEntryPart(entryIndex: number, partIndex: number)`** `-> number`: Returns the low (`0`) or high (`1`) 32-bit half of an entry, indexed from 0.
+* **`:FetchCurrentLabel()`** `-> string?`: Returns the text for the current label step, or `nil` when unavailable.
+* **`:GetCurrentScopeLabelCount()`** `-> number`: Returns the number of labels tracked for the current scope.
+* **`:FetchCurrentScopeLabel(labelIndex: number)`** `-> string?`: Returns a tracked current-scope label. On an exit step, the current scope is the scope that just exited.
+* **`:GetScopeLabelCount(threadId: number, stackLevel: number)`** `-> number`: Returns the number of labels tracked for a stack element.
+* **`:FetchScopeLabel(threadId: number, stackLevel: number, labelIndex: number)`** `-> string?`: Returns a tracked stack-element label.
 * **`:Dispose()`** `-> nil`: Cleans up the iterator's resources.
+
+The scope-label methods require `TrackScopeLabels = true`. Label and stack-level
+indices are zero-based, and label fetches may return `nil` when text is unavailable.
 
 ---
 
@@ -743,8 +874,7 @@ Represents a MicroProfiler session - the main object you interact with. Contains
 Returned by many `Session` list getters. Contains either a scalar value or FlatBuffer elements.
 * **`ScalarArray<T>`**: Wraps an array of scalar elements (like `number`).
 * **`StructArray<T>`**: Wraps an array of FB structs (like `FB.U64Sample`).
-* **`TableArray<T>`**: Wraps an array of FB tables.
-* **`CounterSampleArray<T>`**: Specialized wrapper for an array of `FB.CounterSample` elements.
+* **`CounterSampleArray`**: Specialized wrapper for an array of `FB.CounterSample` elements.
 
 **Common Methods:**
 * **`:Size()`** `-> number`: Returns the number of elements.
@@ -761,9 +891,12 @@ Returned by many `Session` list getters. Contains either a scalar value or FlatB
 
 ---
 
-### 3. Unpacked FlatBuffer Tables
+### 3. FlatBuffer Data Types
 
-When using `Fetch***` methods or providing configuration objects to Iterators, the returned/accepted Native Luau tables mimic these FlatBuffer definitions. 
+`Fetch***` methods return native Luau tables that mirror these FlatBuffer
+definitions, and iterator configuration uses native tables with the listed
+fields. Iterator state and stack objects are persistent FlatBuffer views;
+access their values through the getters listed below.
 
 #### Core Descriptors
 
@@ -773,6 +906,10 @@ When using `Fetch***` methods or providing configuration objects to Iterators, t
 
 **`GeneralInfo`**
 * `PlatformInfoJson`: string
+
+`PlatformInfoJson` contains platform metadata supplied by the capture producer.
+Programmatically triggered client captures leave it empty; Studio, server, and
+manually triggered captures may include it.
 
 **`GroupDesc`**
 * `GroupId`: number (uint)
@@ -824,6 +961,21 @@ When using `Fetch***` methods or providing configuration objects to Iterators, t
 * `FrameId`: number (uint)
 * `Value`: number (ulong)
 
+**`TrackDesc`**
+* `TimestampStart`: number (ulong)
+* `TimestampStop`: number (ulong)
+* `AppType`: `LibMP.Enums.AppType`
+
+`LibMP.Enums.AppType` contains `Unknown`, `Client`, `Studio`, and `Server`.
+
+**`SegmentDesc`**
+* `TimestampStart`: number (ulong)
+* `TimestampStop`: number (ulong)
+* `FrameIdBegin`: number (uint)
+* `FrameIdEnd`: number (uint)
+* `FrameAbsoluteIdBegin`: number (uint)
+* `Markers`: number (uint bit mask)
+
 **`ThreadLogDescr`**
 * `ThreadId`: number (uint)
 * `LogEntriesNum`: number (uint)
@@ -843,76 +995,68 @@ When using `Fetch***` methods or providing configuration objects to Iterators, t
 * `SkipThreadStackResume`: boolean
 * `SkipThreadStackDepthSync`: boolean
 * `EmitThreadFrameEnd`: boolean
+* `TrackScopeLabels`: boolean (retains up to 16 labels per active scope)
 * `ThreadIds`: Array of numbers
 * `GroupIds`: Array of numbers
 * `TimerIds`: Array of numbers
 * `SkipTimerIds`: Array of numbers
 
-**`LogIteratorThreadStackState`**
-* `Depth`: number (uint)
-* `DepthAbsolute`: number (int)
-* `DepthAbsoluteMin`: number (int)
-* `IsUnderflowed`: boolean
-* `IsOverflowed`: boolean
-* `WasOverflowed`: boolean
+**`LogIteratorThreadStackState` view getters**
+* `:Depth()` `-> number`
+* `:DepthAbsolute()` `-> number`
+* `:DepthAbsoluteMin()` `-> number`
+* `:IsUnderflowed()` `-> boolean`
+* `:IsOverflowed()` `-> boolean`
+* `:WasOverflowed()` `-> boolean`
 
-**`LogIteratorState`**
-* `Started`: boolean
-* `Finished`: boolean
-* `ThreadStackDepth`: number (uint)
-* `ThreadStackIsUnderflowed`: boolean
-* `ThreadStackIsOverflowed`: boolean
-* `ThreadStackWasOverflowed`: boolean
-* `ThreadPrevTimestamp`: number (ulong)
-* `FrameId`: number (uint)
-* `FrameAbsoluteId`: number (uint)
-* `FrameDescLocator`: number (ulong)
-* `ThreadId`: number (uint)
-* `IsGpuThread`: boolean
-* `FrameChanged`: boolean
-* `ThreadChanged`: boolean
-* `IsFrameStitching`: boolean
-* `EntryLocator`: number (ulong)
-* `TimerId`: number (uint)
-* `Timestamp`: number (ulong)
-* `TimestampGpu`: number (ulong)
-* `EntryTypeRaw`: number (uint)
-* `EventType`: number (uint)
-* `IsUnknown`: boolean
-* `IsEnter`: boolean
-* `IsExit`: boolean
-* `IsLabel`: boolean
-* `IsEvent`: boolean
-* `IsThreadFrameEnd`: boolean
-* `IsFrameBoundary`: boolean
+**`LogIteratorState` view getters**
+* `:Started()` `-> boolean`
+* `:Finished()` `-> boolean`
+* `:FrameId()` `-> number`
+* `:FrameAbsoluteId()` `-> number`
+* `:ThreadId()` `-> number`
+* `:IsGpuThread()` `-> boolean`
+* `:TimerId()` `-> number`
+* `:Timestamp()` `-> number`
+* `:TimestampGpu()` `-> number`
+* `:FrameChanged()` `-> boolean`
+* `:ThreadChanged()` `-> boolean`
+* `:IsEnter()` `-> boolean`
+* `:IsExit()` `-> boolean`
+* `:IsLabel()` `-> boolean`
+* `:IsEvent()` `-> boolean`
+* `:IsUnknown()` `-> boolean`
+* `:IsFrameStitching()` `-> boolean`
+* `:IsFrameBoundary()` `-> boolean`
+* `:IsThreadFrameEnd()` `-> boolean`
+* `:ThreadStackDepth()` `-> number`
+* `:ThreadStackIsUnderflowed()` `-> boolean`
+* `:ThreadStackIsOverflowed()` `-> boolean`
+* `:ThreadStackWasOverflowed()` `-> boolean`
+* `:ThreadPrevTimestamp()` `-> number`
+* `:EntryLocator()` `-> number`
+* `:EntryTypeRaw()` `-> number`
+* `:EventType()` `-> number`
 
-**`LogIteratorThreadStackElement`**
-* `EnterFrameId`: number (uint)
-* `EnterTimerId`: number (uint)
-* `EnterEntryLocator`: number (ulong)
-* `EnterTimestamp`: number (ulong)
-* `EnterTimestampFrameLocal`: number (ulong)
-* `CustomData`: `CustomData16b` object (`B0` through `B15`)
+**`LogIteratorThreadStackElement` view getters**
+* `:EnterFrameId()` `-> number`
+* `:EnterTimerId()` `-> number`
+* `:EnterTimestamp()` `-> number`
+* `:EnterTimestampFrameLocal()` `-> number`
+* `:EnterEntryLocator()` `-> number`
 
 **`CounterIteratorConfig`**
 * `RootCounterIds`: Array of numbers
 
-**`CounterIteratorState`**
-* `Started`: boolean
-* `Finished`: boolean
-* `CounterId`: number (uint)
-* `ParentId`: number (uint)
-* `Level`: number (uint)
-* `RelativeLevel`: number (uint)
-* `RootLevel`: number (uint)
-* `IndexInSiblings`: number (uint)
-* `IsLeaf`: boolean
-* `HierarchyChanged`: boolean
-* `CounterStackIsOverflowed`: boolean
-
----
-
-### 4. Known Issues
-
-`GeneralInfo.PlatformInfoJson` - not implemented; always empty  
-`TimerDesc.IsUserTimer` - not implemented; always false  
+**`CounterIteratorState` view getters**
+* `:Started()` `-> boolean`
+* `:Finished()` `-> boolean`
+* `:CounterId()` `-> number`
+* `:ParentId()` `-> number`
+* `:Level()` `-> number`
+* `:RelativeLevel()` `-> number`
+* `:RootLevel()` `-> number`
+* `:IndexInSiblings()` `-> number`
+* `:IsLeaf()` `-> boolean`
+* `:HierarchyChanged()` `-> boolean`
+* `:CounterStackIsOverflowed()` `-> boolean`

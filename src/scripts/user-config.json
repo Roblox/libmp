@@ -1,0 +1,111 @@
+// Example scripts/.user-config.json:
+// {
+//     "emsdk_path": "/path/to/emsdk",
+//     "defines": {
+//         "always": {
+//             "append": ["MY_LOCAL_DEFINE_A=1"]
+//         },
+//         "conditional": {
+//             "my-local-option": {
+//                 "description": "Enable local modifications",
+//                 "set": ["MY_LOCAL_DEFINE_B"]
+//             }
+//         }
+//     }
+// }
+
+{
+    "defines": {
+        "always": {
+            "set": []
+        },
+        "conditional": {
+            "no-v1-global-index-compatibility": {
+                "description": "Do not accept v1 global indexes containing legacy 32-bit data offsets",
+                "set": [
+                    "ENABLE_V1CONTAINER_GLOBALINDEX_U32OFFSET_COMPATIBILITY=0"
+                ]
+            },
+            "no-dependency-alloc-routing": {
+                "description": "Let LZ4 and FlatBuffers use their default allocators instead of routing them through ntd::mem",
+                "set": [
+                    "CFG_ROUTE_DEPENDENCY_ALLOCATIONS_TO_NTD=0"
+                ]
+            },
+            "external-flatbuffers": {
+                "description": "Use the host-provided <flatbuffers/flatbuffers.h> and ::flatbuffers namespace instead of LibMP's bundled FlatBuffers core",
+                "set": [
+                    "CFG_USE_EXTERNAL_FLATBUFFERS=1"
+                ]
+            },
+            "external-lz4": {
+                "description": "Do not compile bundled LZ4; the host must initialize GPRX::lz4::Lz4Api",
+                "set": [
+                    "CFG_USE_EXTERNAL_LZ4=1"
+                ]
+            },
+            "embedded-alloc": {
+                "description": "Use the embedded mmap/VirtualAlloc arena as the ntd::mem backend (no libc malloc)",
+                "set": [
+                    "NTD_EMBEDDED_ALLOC=1"
+                ]
+            },
+            "external-pages": {
+                "description": "Embedded allocator takes raw pages from the host (link-time NtdHostPageReserve/Release, or setters); requires --embedded-alloc too",
+                "set": [
+                    "NTD_EXTERNAL_PAGES=1"
+                ]
+            },
+            "external-malloc": {
+                "description": "Use a host allocator as the ntd::mem backend (link-time NtdHostMalloc/Free/Realloc, or setters); alternative to the embedded allocator",
+                "set": [
+                    "NTD_EXTERNAL_MALLOC=1"
+                ]
+            },
+            "external-setters": {
+                "description": "Provide the external page/malloc hooks at runtime via ntd::mem::SetPageSource/SetMallocFns instead of the default link-time NtdHost* functions",
+                "set": [
+                    "NTD_EXTERNAL_SETTERS=1"
+                ]
+            },
+            "ntd-fileio": {
+                "description": "Use minimal OS-level file I/O instead of std::ifstream/ofstream (native)",
+                "set": [
+                    "NTD_OWN_FILEIO=1"
+                ]
+            },
+            "exclude-capture-builder": {
+                "description": "Exclude the LibMP capture-builder API and implementation (WASM/Luau module builds always exclude it)",
+                "set": [
+                    "LIBMP_EXCLUDE_CAPTURE_BUILDER=1"
+                ]
+            },
+            "exclude-lz4-encoder": {
+                "description": "Exclude LZ4 frame compression while retaining decompression",
+                "set": [
+                    "CFG_EXCLUDE_LZ4_ENCODER=1"
+                ]
+            },
+            "trusted-inputs-only": {
+                "description": "Expose only trusted-input session APIs and omit FlatBuffers graph verification (WASM/Luau module builds always enable it)",
+                "set": [
+                    "LIBMP_TRUSTED_INPUTS_ONLY=1"
+                ]
+            },
+            "ntd-public-api": {
+                "description": "Use the ntd type family at cpp_api's public boundary instead of default-allocator std types; allocator-aware standard types use ntd::allocator",
+                "set": [
+                    "LIBMP_PUBLIC_NTD_API=1"
+                ]
+            },
+            "allocator-autonomous": {
+                "description": "Use std-backed ntd types with the embedded allocator, ntd public API, and OS file I/O",
+                "set": [
+                    "NTD_EMBEDDED_ALLOC=1",
+                    "LIBMP_PUBLIC_NTD_API=1",
+                    "NTD_OWN_FILEIO=1"
+                ]
+            }
+        }
+    }
+}

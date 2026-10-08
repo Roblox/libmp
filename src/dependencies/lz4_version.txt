@@ -1,0 +1,4 @@
+{
+    "repo": "https://github.com/lz4/lz4.git",
+    "commit": "0774d05537f9"
+}

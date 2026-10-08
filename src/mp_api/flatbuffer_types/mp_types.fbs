@@ -1,0 +1,294 @@
+/* This file is part of LibMP and is licensed under the MIT License; see LICENSE for details. */
+
+namespace MpTypes;
+
+/******************************************************************************/
+enum ContainerFormat : uint {
+    Raw = 0,
+    Compressed = 1,
+    CompressedAscii = 2,
+    CompressedHtml = 3
+}
+
+enum ContentMode : uint {
+    Full = 0,
+    CountersOnly = 1,
+}
+
+enum DataSlot : uint {
+    Live = 0,
+    FirstUserManaged = 1,
+    LastUserManaged = 4,
+    Temporary = 5,
+}
+
+struct GlobalDesc {
+    tick_to_ms_cpu: float;
+    tick_to_ms_gpu: float;
+}
+
+table GeneralInfo {
+    platform_info_json: string;
+}
+
+table GroupDesc {
+    group_id: uint;
+    group_name: string;
+    color: uint;
+    is_gpu: bool;
+}
+
+table TimerDesc {
+    timer_id: uint;
+    timer_name: string;
+    group_id: uint;
+    color: uint;
+    is_user_timer: bool;
+}
+
+table CounterDesc {
+    counter_id: uint;
+    counter_name: string;
+    parent: uint;
+    sibling: uint;
+    first_child: uint;
+    level: ubyte;
+}
+
+table ThreadDesc {
+    thread_id: uint;
+    thread_name: string;
+    buffer_size: uint;
+    is_gpu: bool;
+}
+
+struct ThreadLogDescr {
+    thread_id: uint;
+    log_entries_num: uint;
+    log_start_locator: ulong;
+    is_removed: bool;
+}
+
+table FrameDesc {
+    frame_id: uint;
+    frame_absolute_id: uint;
+    tick_start_cpu: ulong;
+    tick_end_cpu: ulong;
+    tick_start_gpu: ulong;
+    tick_end_gpu: ulong;
+    label_offset_min: ulong;
+    label_offset_max: ulong;
+    is_paused: bool;
+    is_incomplete: bool;
+    thread_logs: [ThreadLogDescr];
+}
+
+struct LabelBufferRegion {
+    start_offset: ulong;
+    end_offset: ulong;
+    buffer_start_locator: ulong;
+}
+
+struct CounterSample {
+    frame_id: uint;
+    value: double;
+}
+
+struct U64Sample {
+    frame_id: uint;
+    value: ulong;
+}
+
+enum AppType : ubyte {
+    Unknown = 0,
+    Client,
+    Studio,
+    Server,
+}
+
+struct TrackDesc {
+    timestamp_start: ulong;
+    timestamp_stop: ulong;
+    app_type: AppType;
+}
+
+struct SegmentDesc {
+    timestamp_start: ulong;
+    timestamp_stop: ulong;
+    frame_id_begin: uint;
+    frame_id_end: uint;
+    frame_absolute_id_begin: uint;
+    markers: uint;
+}
+
+/******************************************************************************/
+table LogIteratorConfig {
+    start_frame_id: uint = 0;
+    end_frame_id: uint = 0;
+    skip_gpu_threads: bool = false;
+    skip_events: bool = false;
+    skip_paused_frames: bool = false;
+    skip_frame_boundaries: bool = false;
+    skip_timestamp_normalization: bool = false;
+    skip_thread_stack_resume: bool = false;
+    skip_thread_stack_depth_sync: bool = false;
+    emit_thread_frame_end: bool = false;
+    track_scope_labels: bool = false;
+    thread_ids: [uint];
+    group_ids: [uint];
+    timer_ids: [uint];
+    skip_timer_ids: [uint];
+}
+
+struct LogIteratorThreadStackState {
+    depth: uint = 0;
+    depth_absolute: int = 0;
+    depth_absolute_min: int = 0;
+    is_underflowed: bool = false;
+    is_overflowed: bool = false;
+    was_overflowed: bool = false;
+}
+
+struct LogIteratorState {
+    started: bool = false;
+    finished: bool = false;
+    
+    thread_stack_depth: uint = 0;
+    thread_stack_is_underflowed: bool = false;
+    thread_stack_is_overflowed: bool = false;
+    thread_stack_was_overflowed: bool = false;
+    thread_prev_timestamp: ulong = 0;
+    
+    frame_id: uint = 0;
+    frame_absolute_id: uint = 0;
+    frame_desc_locator: ulong = 0;
+    thread_id: uint = 0;
+    is_gpu_thread: bool = false;
+    is_frame_stitching: bool = false;
+
+    frame_changed: bool = false;
+    thread_changed: bool = false;
+
+    entry_locator: ulong = 0;
+    timer_id: uint = 0;
+    timestamp: ulong = 0;
+    timestamp_gpu: ulong = 0;
+    entry_type_raw: uint = 0;
+    event_type: uint = 0;
+    
+    is_unknown: bool = false;
+    is_enter: bool = false;
+    is_exit: bool = false;
+    is_label: bool = false;
+    is_event: bool = false;
+    is_thread_frame_end: bool = false;
+    is_frame_boundary: bool = false;
+}
+
+struct CustomData16b {
+    b0: ubyte;
+    b1: ubyte;
+    b2: ubyte;
+    b3: ubyte;
+    b4: ubyte;
+    b5: ubyte;
+    b6: ubyte;
+    b7: ubyte;
+    b8: ubyte;
+    b9: ubyte;
+    b10: ubyte;
+    b11: ubyte;
+    b12: ubyte;
+    b13: ubyte;
+    b14: ubyte;
+    b15: ubyte;
+}
+
+struct LogIteratorThreadStackElement {
+    enter_frame_id: uint;
+    enter_timer_id: uint;
+    enter_entry_locator: ulong;
+    enter_timestamp: ulong;
+    enter_timestamp_frame_local: ulong;
+    custom_data: CustomData16b;
+}
+
+/******************************************************************************/
+struct CounterIteratorState {
+    started: bool = false;
+    finished: bool = false;
+    counter_id: uint = 0;
+    parent_id: uint = 0;
+    level: uint = 0;
+    relative_level: uint = 0;
+    root_level: uint = 0;
+    index_in_siblings: uint = 0;
+    is_leaf: bool = false;
+    hierarchy_changed: bool = false;
+    counter_stack_is_overflowed: bool = false;
+}
+
+table CounterIteratorConfig {
+    root_counter_ids: [uint]; 
+}
+
+/******************************************************************************/
+/* Control-channel command/response payloads and schema-owned command registry. */
+/* @control_command id=10 name=EnableProfiler request=MsgBool response=MsgBool */
+/* @control_command id=20 name=EnableCapture request=MsgBool response=MsgBool */
+/* @control_command id=30 name=ShowUI request=MsgBool response=MsgBool */
+/* @control_command id=40 name=SetFrameLimit request=MsgI32 response=MsgBool */
+/* @control_command id=50 name=CaptureToSlot request=CaptureToSlotRequest response=MsgBool */
+/* @control_command id=60 name=ResetSlot request=MsgU32 response=MsgBool */
+/* @control_command id=70 name=SetMemTargetMB request=MsgI32 response=MsgBool */
+/* @control_command id=10001 name=ExperimentalV1StartFileStream request=ExperimentalFileStreamStartRequest response=MsgBool */
+/* @control_command id=10002 name=ExperimentalV1StopStream request=MsgBool response=MsgBool */
+/* @control_command id=10003 name=ExperimentalV1SetStreamMarker request=ExperimentalStreamMarkerRequest response=MsgBool */
+/* @control_command id=10004 name=ExperimentalV1GetStreamStatus request=MsgBool response=ExperimentalStreamStatus */
+/* @control_command id=10006 name=ExperimentalV1StartMemoryStream request=ExperimentalMemoryStreamStartRequest response=MsgBool */
+/* @control_command id=10007 name=ExperimentalV1SetContentMode request=ExperimentalContentModeRequest response=MsgBool */
+struct CaptureToSlotRequest {
+    target_slot_id: uint;
+    max_frame_count: uint;
+    container_format: ContainerFormat;
+}
+
+table ExperimentalFileStreamStartRequest {
+    filename_postfix: string;
+    target_slot_id: uint;
+}
+
+struct ExperimentalStreamMarkerRequest {
+    marker: uint;
+    enabled: bool;
+}
+
+struct ExperimentalMemoryStreamStartRequest {
+    target_slot_id: uint;
+}
+
+struct ExperimentalContentModeRequest {
+    content_mode: ContentMode;
+}
+
+struct ExperimentalStreamStatus {
+    active: bool;
+    stream_frame_id: uint;
+    absolute_frame_id: uint;
+    marker_mask: uint;
+    recorded_size_kb: uint;
+    max_size_kb: uint;
+    elapsed_ms: uint;
+}
+
+struct MsgBool {
+    value: bool = false;
+}
+
+struct MsgU32 {
+    value: uint = 0;
+}
+
+struct MsgI32 {
+    value: int = 0;
+}

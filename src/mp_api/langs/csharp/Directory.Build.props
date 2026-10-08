@@ -1,0 +1,5 @@
+<Project>
+  <PropertyGroup>
+    <DefineConstants>$(DefineConstants);ENABLE_SPAN_T;UNSAFE_BYTEBUFFER;BYTEBUFFER_NO_BOUNDS_CHECK</DefineConstants>
+  </PropertyGroup>
+</Project>

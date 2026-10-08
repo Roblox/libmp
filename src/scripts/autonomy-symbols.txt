@@ -1,0 +1,47 @@
+# Symbol policy shared by the strict allocator-autonomy checks.
+#
+# Format: <kind> <platform> <canonical-symbol-or-demangled-token>
+# Kinds:
+#   direct   C heap-ownership API forbidden anywhere in the LibMP archive.
+#   premain  Additional demangled C++ substring forbidden from static initializers.
+# Platforms: all, unix, linux, darwin, windows.
+# Direct names omit ABI-added leading underscores and COFF __imp_ prefixes.
+
+direct all malloc
+direct all calloc
+direct all realloc
+direct all free
+direct all aligned_alloc
+direct all strdup
+direct all wcsdup
+
+direct unix strndup
+direct unix posix_memalign
+direct unix asprintf
+direct unix vasprintf
+direct unix getline
+direct unix getdelim
+
+direct linux reallocarray
+direct linux memalign
+direct linux valloc
+direct linux pvalloc
+
+direct darwin reallocarray
+direct darwin reallocf
+direct darwin valloc
+direct darwin malloc_zone_malloc
+direct darwin malloc_zone_calloc
+direct darwin malloc_zone_realloc
+direct darwin malloc_zone_free
+
+direct windows aligned_malloc
+direct windows aligned_realloc
+direct windows aligned_recalloc
+direct windows aligned_free
+direct windows recalloc
+direct windows expand
+
+premain all ntd::mem::Alloc
+premain all ntd::mem::Realloc
+premain all ntd::mem::Free
